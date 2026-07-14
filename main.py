@@ -2,6 +2,8 @@
 from fastapi import FastAPI, HTTPException
 from typing import Optional
 from scrapers import OmniScraper
+import uvicorn
+import os
 
 app = FastAPI(title="Omni-Stream API", description="API for extracting M3U8 video links from various streaming sites.")
 scraper = OmniScraper()
@@ -19,3 +21,7 @@ async def extract_m3u8_link(
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 80))
+    uvicorn.run(app, host="0.0.0.0", port=port)
