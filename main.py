@@ -1,8 +1,10 @@
 
 from fastapi import FastAPI, HTTPException
 from typing import Optional
+from scrapers import OmniScraper
 
 app = FastAPI(title="Omni-Stream API", description="API for extracting M3U8 video links from various streaming sites.")
+scraper = OmniScraper()
 
 @app.get("/")
 async def read_root():
@@ -11,23 +13,9 @@ async def read_root():
 @app.get("/extract")
 async def extract_m3u8_link(
     site: str,
-    url: str,
-    quality: Optional[str] = None
+    url: str
 ):
-    # Placeholder for extraction logic
-    # In a real scenario, this would call a scraper function based on the 'site' parameter
-    if site.lower() == "egybest":
-        # Simulate extraction for EgyBest
-        if "example.com/egybest/movie123" in url:
-            return {"site": site, "url": url, "m3u8_link": "https://example.com/egybest/movie123/stream.m3u8", "quality": quality or "auto"}
-        else:
-            raise HTTPException(status_code=404, detail="Movie not found on EgyBest (simulated)")
-    elif site.lower() == "mycima":
-        # Simulate extraction for MyCima
-        if "example.com/mycima/series456" in url:
-            return {"site": site, "url": url, "m3u8_link": "https://example.com/mycima/series456/stream.m3u8", "quality": quality or "auto"}
-        else:
-            raise HTTPException(status_code=404, detail="Series not found on MyCima (simulated)")
-    else:
-        raise HTTPException(status_code=400, detail=f"Extraction for site '{site}' is not yet supported.")
-
+    result = scraper.extract(site, url)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
