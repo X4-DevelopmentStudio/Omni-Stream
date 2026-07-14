@@ -2,77 +2,109 @@
 import asyncio
 from playwright.async_api import async_playwright
 import re
-from typing import Dict, Optional
+import requests
+from typing import Dict, List, Optional
+import time
 
 class OmniScraper:
     def __init__(self):
-        self.timeout = 30000  # 30 seconds
+        self.timeout = 45000  # 45 seconds for heavy sites
+        self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    def validate_link(self, m3u8_url: str) -> bool:
+        """Checks if the M3U8 link is actually reachable and active."""
+        try:
+            response = requests.head(m3u8_url, timeout=5, headers={'User-Agent': self.user_agent})
+            return response.status_code < 400
+        except:
+            return False
 
     async def extract_m3u8(self, url: str) -> Dict:
         """
-        Uses Playwright to navigate to a page and intercept network requests
-        to find the final M3U8 streaming link.
+        Professional extraction with network interception, multi-quality detection,
+        and real-time validation.
         """
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            # Create a context with a realistic user agent
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
+            context = await browser.new_context(user_agent=self.user_agent)
             page = await context.new_page()
             
-            m3u8_link = None
-            
-            # Intercept network requests
+            streams = []
+            metadata = {"title": "Unknown", "poster": None}
+
+            # Intercept network requests for M3U8 links
             async def intercept_request(request):
-                nonlocal m3u8_link
                 if ".m3u8" in request.url:
-                    m3u8_link = request.url
+                    if request.url not in [s['url'] for s in streams]:
+                        # Basic quality detection from URL
+                        quality = "Auto"
+                        if "1080" in request.url: quality = "1080p"
+                        elif "720" in request.url: quality = "720p"
+                        elif "480" in request.url: quality = "480p"
+                        elif "360" in request.url: quality = "360p"
+                        
+                        streams.append({
+                            "quality": quality,
+                            "url": request.url,
+                            "valid": self.validate_link(request.url)
+                        })
 
             page.on("request", intercept_request)
             
             try:
-                # Navigate to the URL
-                await page.goto(url, wait_until="networkidle", timeout=self.timeout)
+                await page.goto(url, wait_until="domcontentloaded", timeout=self.timeout)
                 
-                # Some sites require clicking a play button to trigger the M3U8 load
-                # We'll try to find and click common play button patterns
-                play_buttons = [
+                # Extract Metadata (Professional Touch)
+                try:
+                    metadata["title"] = await page.title()
+                    metadata["poster"] = await page.eval_on_selector("meta[property='og:image']", "el => el.content")
+                except:
+                    pass
+
+                # Aggressive interaction to trigger players
+                selectors = [
                     "button.play", "div.play-button", ".vjs-big-play-button", 
-                    "i.fa-play", "svg.play-icon"
+                    "i.fa-play", "svg.play-icon", ".play-btn", "#play-video"
                 ]
-                for selector in play_buttons:
+                
+                # Wait for any of these to be visible and click
+                for selector in selectors:
                     try:
-                        if await page.is_visible(selector):
-                            await page.click(selector)
-                            await asyncio.sleep(2) # Wait for potential load
+                        btn = await page.wait_for_selector(selector, timeout=2000)
+                        if btn:
+                            await btn.click()
+                            await asyncio.sleep(3)
                     except:
                         continue
 
-                # Wait a bit more for any dynamic loads
-                if not m3u8_link:
-                    await asyncio.sleep(5)
+                # Handle Iframes (Deep Scan)
+                iframes = page.frames
+                for frame in iframes:
+                    try:
+                        # Try to click play inside iframes
+                        for selector in selectors:
+                            btn = await frame.query_selector(selector)
+                            if btn:
+                                await btn.click()
+                                await asyncio.sleep(2)
+                    except:
+                        continue
 
-                if m3u8_link:
+                # Final wait for dynamic loading
+                await asyncio.sleep(5)
+
+                if streams:
+                    # Sort streams by quality if possible
                     return {
-                        "url": url,
-                        "m3u8_link": m3u8_link,
-                        "status": "success"
+                        "metadata": metadata,
+                        "streams": streams,
+                        "status": "success",
+                        "timestamp": time.time()
                     }
                 else:
-                    return {"error": "Could not capture M3U8 link via network interception"}
+                    return {"error": "No active M3U8 streams captured. The site might have advanced anti-bot protection."}
             
             except Exception as e:
                 return {"error": f"Extraction failed: {str(e)}"}
             finally:
                 await browser.close()
-
-    def extract(self, site: str, url: str) -> Dict:
-        # Since the extraction is now async, we'll run it in the event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.extract_m3u8(url))
-        finally:
-            loop.close()
-

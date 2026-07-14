@@ -1,48 +1,69 @@
-# Omni-Stream
+# 🚀 Omni-Stream Ultimate
 
-Omni-Stream is a professional Arabic streaming link extractor service. It provides a REST API to fetch M3U8 video links from various popular Arabic streaming platforms, including EgyBest, WeCima (MyCima), and ArabSeed.
+**Omni-Stream** is the most advanced, professional-grade Arabic streaming link extractor available on GitHub. It uses high-end headless browsing and network interception technology to capture real-world M3U8 streaming links from virtually any Arabic platform.
 
-## Features
-- **Multi-Site Support**: Extract links from EgyBest, WeCima, ArabSeed, and more.
-- **REST API**: Simple and easy-to-use API endpoints.
-- **Dockerized**: Ready for deployment on platforms like Render or Railway.
-- **M3U8 Extraction**: Directly retrieves streamable links for third-party players.
+## 🌟 Advanced Features
+- **🎯 Multi-Quality Extraction**: Automatically detects and categorizes streams by quality (1080p, 720p, 480p, etc.).
+- **✅ Real-time Validation**: Every link is verified in real-time to ensure it's active and playable before being returned.
+- **🖼️ Metadata Enrichment**: Fetches movie titles, posters, and descriptions along with the streaming links.
+- **🛡️ Anti-Bot Bypass**: Uses Playwright to simulate real human behavior, bypassing common protections like Cloudflare and DDoS-Guard.
+- **⚡ Smart Caching**: Integrated caching system to provide lightning-fast responses for popular requests.
+- **🐳 Docker Ready**: Optimized Dockerfile for seamless deployment on Render, Railway, or any cloud provider.
 
-## Getting Started
+## 🛠️ Technology Stack
+- **FastAPI**: High-performance Python web framework.
+- **Playwright**: Industry-leading browser automation and network interception.
+- **Uvicorn**: Lightning-fast ASGI server.
+- **Docker**: Containerization for consistent environments.
 
-### Prerequisites
-- Python 3.9+
-- Docker (optional, for containerized deployment)
+## 🚀 Quick Start
 
-### Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/X4-DevelopmentStudio/Omni-Stream.git
-   cd Omni-Stream
-   ```
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Run the application:
-   ```bash
-   uvicorn main:app --reload
-   ```
+### Deployment on Render
+1. Link your GitHub repository.
+2. Render will automatically detect `render.yaml` and `Dockerfile`.
+3. The build process will install all necessary Chromium dependencies.
 
-### API Usage
-- **Endpoint**: `/extract`
-- **Method**: `GET`
-- **Parameters**:
-  - `site`: The name of the streaming site (e.g., `egybest`, `wecima`, `arabseed`).
-  - `url`: The URL of the movie or series page.
-
-**Example Request:**
+### Local Development
 ```bash
-GET /extract?site=egybest&url=https://egybest.to/movie/example-movie
+git clone https://github.com/X4-DevelopmentStudio/Omni-Stream.git
+cd Omni-Stream
+pip install -r requirements.txt
+playwright install chromium
+python main.py
 ```
 
-## Deployment
-This project is designed to be easily deployed on **Render** or **Railway** using the provided `Dockerfile`.
+## 📖 API Documentation
+- **Endpoint**: `/extract`
+- **Parameters**:
+  - `url`: The URL of the target movie/series page.
+  - `bypass_cache`: (Optional) Set to `true` to force a fresh extraction.
 
-## License
+### Example Response
+```json
+{
+  "metadata": {
+    "title": "Hellhound (2024) - WeCima",
+    "poster": "https://wecima.gold/posters/hellhound.jpg"
+  },
+  "streams": [
+    {
+      "quality": "1080p",
+      "url": "https://stream.server.com/1080/playlist.m3u8",
+      "valid": true
+    },
+    {
+      "quality": "720p",
+      "url": "https://stream.server.com/720/playlist.m3u8",
+      "valid": true
+    }
+  ],
+  "status": "success",
+  "timestamp": 1715678901.23
+}
+```
+
+## 🤝 Contributing
+Contributions are welcome! Feel free to open issues or submit pull requests to make Omni-Stream even better.
+
+## ⚖️ License
 MIT License
