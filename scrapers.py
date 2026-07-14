@@ -4,6 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 from typing import Dict
 import base64
+import json
 
 class OmniScraper:
     def __init__(self):
@@ -16,48 +17,53 @@ class OmniScraper:
         """Extracts M3U8 links from WeCima (MyCima)."""
         try:
             response = requests.get(url, headers=self.headers, timeout=15)
-            soup = BeautifulSoup(response.text, 'html.parser')
+            # WeCima uses heavily obfuscated JS. The player URL is often inside a data attribute or injected via JS.
             
-            # WeCima often embeds the player in an iframe
-            iframes = soup.find_all('iframe')
-            player_url = None
-            for iframe in iframes:
-                src = iframe.get('src', '')
-                if 'akhbarworld.online' in src or 'fastvip.space' in src:
-                    player_url = src
-                    break
+            # Look for the specific player iframe pattern in the response text
+            # The iframe might be hidden in a script or data attribute
+            match = re.search(r'src="([^"]*akhbarworld\.online[^"]*)"', response.text)
+            if not match:
+                match = re.search(r'src="([^"]*fastvip\.space[^"]*)"', response.text)
+            
+            player_url = match.group(1) if match else None
             
             if not player_url:
-                # Try to find direct video source in script tags
-                match = re.search(r'file: "(https?://.*?\.m3u8)"', response.text)
-                if match:
+                # Fallback: Search for any M3U8 links in the text
+                m3u8_matches = re.findall(r'(https?://[^\s"]+\.m3u8)', response.text)
+                if m3u8_matches:
                     return {
                         "site": "WeCima",
                         "original_url": url,
-                        "m3u8_link": match.group(1),
+                        "m3u8_link": m3u8_matches[0],
                         "status": "success"
                     }
-                return {"error": "Player not found on WeCima page"}
+                return {"error": "Could not find player or M3U8 link on WeCima"}
 
-            # If we found a player URL, we might need to fetch its content
-            # Note: Real extraction might require handling base64 encoded params
+            # Decode player URL if it contains encoded data
             if 'mycimafsd=' in player_url:
-                encoded_url = player_url.split('mycimafsd=')[1]
-                decoded_url = base64.b64decode(encoded_url).decode('utf-8')
-                return {
-                    "site": "WeCima",
-                    "original_url": url,
-                    "player_url": decoded_url,
-                    "m3u8_link": f"{decoded_url}/playlist.m3u8", # Simplified pattern
-                    "status": "success"
-                }
+                try:
+                    encoded_data = player_url.split('mycimafsd=')[1]
+                    # Handle potential padding issues
+                    missing_padding = len(encoded_data) % 4
+                    if missing_padding:
+                        encoded_data += '=' * (4 - missing_padding)
+                    decoded_url = base64.b64decode(encoded_data).decode('utf-8')
+                    return {
+                        "site": "WeCima",
+                        "original_url": url,
+                        "player_url": decoded_url,
+                        "m3u8_link": f"{decoded_url}/playlist.m3u8",
+                        "status": "success"
+                    }
+                except:
+                    pass
 
             return {
                 "site": "WeCima",
                 "original_url": url,
                 "player_url": player_url,
                 "status": "partial_success",
-                "note": "Manual extraction from player URL might be needed"
+                "note": "Player found, but M3U8 extraction requires further steps"
             }
         except Exception as e:
             return {"error": str(e)}
@@ -65,10 +71,12 @@ class OmniScraper:
     def extract_egybest(self, url: str) -> Dict:
         """Extracts M3U8 links from EgyBest."""
         try:
-            # EgyBest has high protection, often requiring specific cookies or headers
             response = requests.get(url, headers=self.headers, timeout=15)
             # Look for common player patterns
             match = re.search(r'source: "(https?://.*?\.m3u8)"', response.text)
+            if not match:
+                match = re.search(r'file: "(https?://.*?\.m3u8)"', response.text)
+            
             if match:
                 return {
                     "site": "EgyBest",
@@ -86,7 +94,6 @@ class OmniScraper:
         elif site.lower() == "egybest":
             return self.extract_egybest(url)
         else:
-            # Fallback generic extraction
             try:
                 response = requests.get(url, headers=self.headers, timeout=10)
                 match = re.search(r'(https?://[^\s"]+\.m3u8)', response.text)
@@ -100,4 +107,3 @@ class OmniScraper:
                 return {"error": f"Could not extract M3U8 from {site}"}
             except Exception as e:
                 return {"error": str(e)}
-
