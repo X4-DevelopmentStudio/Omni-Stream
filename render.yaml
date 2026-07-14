@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: omni-stream
+    env: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 80
+      - key: PYTHONUNBUFFERED
+        value: "1"
