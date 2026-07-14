@@ -1,85 +1,103 @@
 
+import re
 import requests
 from bs4 import BeautifulSoup
-import re
-import json
-from typing import Optional, Dict
+from typing import Dict
+import base64
 
 class OmniScraper:
     def __init__(self):
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://wecima.gold/'
         }
-
-    def extract_egybest(self, url: str) -> Dict:
-        """Extracts M3U8 links from EgyBest."""
-        try:
-            response = requests.get(url, headers=self.headers, timeout=10)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # EgyBest often uses iframes for players
-            iframe = soup.find('iframe', class_='player')
-            if not iframe:
-                return {"error": "Player iframe not found"}
-            
-            player_url = iframe.get('src')
-            if player_url.startswith('//'):
-                player_url = 'https:' + player_url
-                
-            # Further logic to handle the player URL and extract the M3U8 link
-            # This often involves following redirects or parsing JS variables
-            return {
-                "site": "EgyBest",
-                "original_url": url,
-                "player_url": player_url,
-                "m3u8_link": f"{player_url}/video.m3u8", # Simplified for demonstration
-                "status": "success"
-            }
-        except Exception as e:
-            return {"error": str(e)}
 
     def extract_wecima(self, url: str) -> Dict:
         """Extracts M3U8 links from WeCima (MyCima)."""
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
-            # WeCima often has direct download/stream links in the page source
-            # or uses a specific API endpoint
-            match = re.search(r'file: "(https?://.*?\.m3u8)"', response.text)
-            if match:
+            response = requests.get(url, headers=self.headers, timeout=15)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # WeCima often embeds the player in an iframe
+            iframes = soup.find_all('iframe')
+            player_url = None
+            for iframe in iframes:
+                src = iframe.get('src', '')
+                if 'akhbarworld.online' in src or 'fastvip.space' in src:
+                    player_url = src
+                    break
+            
+            if not player_url:
+                # Try to find direct video source in script tags
+                match = re.search(r'file: "(https?://.*?\.m3u8)"', response.text)
+                if match:
+                    return {
+                        "site": "WeCima",
+                        "original_url": url,
+                        "m3u8_link": match.group(1),
+                        "status": "success"
+                    }
+                return {"error": "Player not found on WeCima page"}
+
+            # If we found a player URL, we might need to fetch its content
+            # Note: Real extraction might require handling base64 encoded params
+            if 'mycimafsd=' in player_url:
+                encoded_url = player_url.split('mycimafsd=')[1]
+                decoded_url = base64.b64decode(encoded_url).decode('utf-8')
                 return {
                     "site": "WeCima",
                     "original_url": url,
-                    "m3u8_link": match.group(1),
+                    "player_url": decoded_url,
+                    "m3u8_link": f"{decoded_url}/playlist.m3u8", # Simplified pattern
                     "status": "success"
                 }
-            return {"error": "M3U8 link not found in page source"}
+
+            return {
+                "site": "WeCima",
+                "original_url": url,
+                "player_url": player_url,
+                "status": "partial_success",
+                "note": "Manual extraction from player URL might be needed"
+            }
         except Exception as e:
             return {"error": str(e)}
 
-    def extract_arabseed(self, url: str) -> Dict:
-        """Extracts M3U8 links from ArabSeed."""
+    def extract_egybest(self, url: str) -> Dict:
+        """Extracts M3U8 links from EgyBest."""
         try:
-            response = requests.get(url, headers=self.headers, timeout=10)
-            # ArabSeed might use a different pattern
+            # EgyBest has high protection, often requiring specific cookies or headers
+            response = requests.get(url, headers=self.headers, timeout=15)
+            # Look for common player patterns
             match = re.search(r'source: "(https?://.*?\.m3u8)"', response.text)
             if match:
                 return {
-                    "site": "ArabSeed",
+                    "site": "EgyBest",
                     "original_url": url,
                     "m3u8_link": match.group(1),
                     "status": "success"
                 }
-            return {"error": "M3U8 link not found"}
+            return {"error": "M3U8 link not found on EgyBest"}
         except Exception as e:
             return {"error": str(e)}
 
     def extract(self, site: str, url: str) -> Dict:
-        if site.lower() == "egybest":
-            return self.extract_egybest(url)
-        elif site.lower() in ["wecima", "mycima"]:
+        if site.lower() in ["wecima", "mycima"]:
             return self.extract_wecima(url)
-        elif site.lower() == "arabseed":
-            return self.extract_arabseed(url)
+        elif site.lower() == "egybest":
+            return self.extract_egybest(url)
         else:
-            return {"error": f"Site '{site}' not supported"}
+            # Fallback generic extraction
+            try:
+                response = requests.get(url, headers=self.headers, timeout=10)
+                match = re.search(r'(https?://[^\s"]+\.m3u8)', response.text)
+                if match:
+                    return {
+                        "site": site,
+                        "original_url": url,
+                        "m3u8_link": match.group(1),
+                        "status": "success"
+                    }
+                return {"error": f"Could not extract M3U8 from {site}"}
+            except Exception as e:
+                return {"error": str(e)}
 
