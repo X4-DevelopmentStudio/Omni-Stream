@@ -17,54 +17,52 @@ class OmniScraper:
         """Extracts M3U8 links from WeCima (MyCima)."""
         try:
             response = requests.get(url, headers=self.headers, timeout=15)
-            # WeCima uses heavily obfuscated JS. The player URL is often inside a data attribute or injected via JS.
             
-            # Look for the specific player iframe pattern in the response text
-            # The iframe might be hidden in a script or data attribute
-            match = re.search(r'src="([^"]*akhbarworld\.online[^"]*)"', response.text)
-            if not match:
-                match = re.search(r'src="([^"]*fastvip\.space[^"]*)"', response.text)
+            # WeCima often hides the player URL in a way that's hard to find with simple regex
+            # Let's try to find all iframe src attributes
+            soup = BeautifulSoup(response.text, 'html.parser')
+            iframes = soup.find_all('iframe')
             
-            player_url = match.group(1) if match else None
+            player_url = None
+            for iframe in iframes:
+                src = iframe.get('src')
+                if src and ('akhbarworld' in src or 'fastvip' in src or 'stream' in src):
+                    player_url = src
+                    break
             
             if not player_url:
-                # Fallback: Search for any M3U8 links in the text
-                m3u8_matches = re.findall(r'(https?://[^\s"]+\.m3u8)', response.text)
-                if m3u8_matches:
-                    return {
-                        "site": "WeCima",
-                        "original_url": url,
-                        "m3u8_link": m3u8_matches[0],
-                        "status": "success"
-                    }
-                return {"error": "Could not find player or M3U8 link on WeCima"}
+                # Search for any URL that looks like a player or stream
+                matches = re.findall(r'https?://[^\s"]+(?:akhbarworld|fastvip|stream|player)[^\s"]+', response.text)
+                if matches:
+                    player_url = matches[0]
 
-            # Decode player URL if it contains encoded data
-            if 'mycimafsd=' in player_url:
-                try:
-                    encoded_data = player_url.split('mycimafsd=')[1]
-                    # Handle potential padding issues
-                    missing_padding = len(encoded_data) % 4
-                    if missing_padding:
-                        encoded_data += '=' * (4 - missing_padding)
-                    decoded_url = base64.b64decode(encoded_data).decode('utf-8')
-                    return {
-                        "site": "WeCima",
-                        "original_url": url,
-                        "player_url": decoded_url,
-                        "m3u8_link": f"{decoded_url}/playlist.m3u8",
-                        "status": "success"
-                    }
-                except:
-                    pass
+            if player_url:
+                if 'mycimafsd=' in player_url:
+                    try:
+                        encoded_data = player_url.split('mycimafsd=')[1]
+                        missing_padding = len(encoded_data) % 4
+                        if missing_padding:
+                            encoded_data += '=' * (4 - missing_padding)
+                        decoded_url = base64.b64decode(encoded_data).decode('utf-8')
+                        return {
+                            "site": "WeCima",
+                            "original_url": url,
+                            "player_url": decoded_url,
+                            "m3u8_link": f"{decoded_url}/playlist.m3u8",
+                            "status": "success"
+                        }
+                    except:
+                        pass
+                
+                return {
+                    "site": "WeCima",
+                    "original_url": url,
+                    "player_url": player_url,
+                    "status": "partial_success",
+                    "note": "Player found, but direct M3U8 requires browser simulation"
+                }
 
-            return {
-                "site": "WeCima",
-                "original_url": url,
-                "player_url": player_url,
-                "status": "partial_success",
-                "note": "Player found, but M3U8 extraction requires further steps"
-            }
+            return {"error": "Could not find player on WeCima page"}
         except Exception as e:
             return {"error": str(e)}
 
@@ -72,11 +70,7 @@ class OmniScraper:
         """Extracts M3U8 links from EgyBest."""
         try:
             response = requests.get(url, headers=self.headers, timeout=15)
-            # Look for common player patterns
-            match = re.search(r'source: "(https?://.*?\.m3u8)"', response.text)
-            if not match:
-                match = re.search(r'file: "(https?://.*?\.m3u8)"', response.text)
-            
+            match = re.search(r'(https?://[^\s"]+\.m3u8)', response.text)
             if match:
                 return {
                     "site": "EgyBest",
