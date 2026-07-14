@@ -1,71 +1,51 @@
 
 from fastapi import FastAPI, HTTPException, Query
-from typing import Optional, List
 from scrapers import OmniScraper
 import uvicorn
 import os
-import asyncio
 from datetime import datetime
 
 app = FastAPI(
-    title="Omni-Stream Ultimate API", 
-    description="The most advanced Arabic streaming link extractor with Multi-Quality, Metadata, and Validation.",
-    version="2.0.0"
+    title="Omni-Stream Enterprise API", 
+    description="The ultimate Arabic streaming toolkit: Video, Subtitles, Metadata, and Playback Headers.",
+    version="3.0.0"
 )
 scraper = OmniScraper()
-
-# Simple In-Memory Cache for demo (would use Redis in production)
 cache = {}
 
 @app.get("/")
 async def read_root():
     return {
-        "project": "Omni-Stream",
+        "project": "Omni-Stream Enterprise",
+        "version": "3.0.0",
         "status": "Online",
-        "features": [
-            "Multi-Quality Detection",
-            "Real-time Link Validation",
-            "Metadata Enrichment",
-            "Headless Interception",
-            "Anti-Bot Bypass"
-        ],
-        "endpoints": {
-            "/extract": "GET - Extract links with site and url params",
-            "/health": "GET - System health check"
-        }
+        "capabilities": [
+            "Multi-Source M3U8 Extraction",
+            "Subtitle Discovery (VTT/SRT)",
+            "Dynamic Metadata Enrichment",
+            "Anti-Hotlink Header Generation",
+            "User-Agent Rotation"
+        ]
     }
 
 @app.get("/extract")
-async def extract_m3u8_link(
-    url: str = Query(..., description="The full URL of the movie or series page"),
-    site: Optional[str] = Query(None, description="Optional site identifier"),
-    bypass_cache: bool = Query(False, description="Force fresh extraction")
+async def extract(
+    url: str = Query(..., description="Target streaming page URL"),
+    bypass_cache: bool = Query(False)
 ):
-    # Check Cache
     if not bypass_cache and url in cache:
-        # Check if cache is fresh (e.g., < 1 hour)
-        cached_data = cache[url]
-        if (datetime.now() - cached_data['time']).seconds < 3600:
-            return cached_data['data']
+        if (datetime.now() - cache[url]['time']).seconds < 3600:
+            return cache[url]['data']
 
     try:
-        result = await scraper.extract_m3u8(url)
+        result = await scraper.extract_enterprise(url)
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         
-        # Save to Cache
-        cache[url] = {
-            "time": datetime.now(),
-            "data": result
-        }
-        
+        cache[url] = {"time": datetime.now(), "data": result}
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "timestamp": datetime.now()}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 80))

@@ -1,69 +1,46 @@
-# 🚀 Omni-Stream Ultimate
+# 💎 Omni-Stream Enterprise Edition
 
-**Omni-Stream** is the most advanced, professional-grade Arabic streaming link extractor available on GitHub. It uses high-end headless browsing and network interception technology to capture real-world M3U8 streaming links from virtually any Arabic platform.
+The most powerful, comprehensive Arabic streaming extraction engine on GitHub. Built for developers who need real, production-ready streaming data.
 
-## 🌟 Advanced Features
-- **🎯 Multi-Quality Extraction**: Automatically detects and categorizes streams by quality (1080p, 720p, 480p, etc.).
-- **✅ Real-time Validation**: Every link is verified in real-time to ensure it's active and playable before being returned.
-- **🖼️ Metadata Enrichment**: Fetches movie titles, posters, and descriptions along with the streaming links.
-- **🛡️ Anti-Bot Bypass**: Uses Playwright to simulate real human behavior, bypassing common protections like Cloudflare and DDoS-Guard.
-- **⚡ Smart Caching**: Integrated caching system to provide lightning-fast responses for popular requests.
-- **🐳 Docker Ready**: Optimized Dockerfile for seamless deployment on Render, Railway, or any cloud provider.
+## 🚀 Enterprise Features
+- **🎬 Universal Video Extraction**: Intercepts M3U8/HLS streams from any player using network-level monitoring.
+- **💬 Subtitle Discovery**: Automatically captures subtitle tracks (`.vtt`, `.srt`) in multiple languages (Arabic, English, etc.).
+- **🛡️ Playback Header Generation**: Provides the exact `Referer` and `User-Agent` headers required to bypass hotlink protection in third-party players (VLC, ExoPlayer, Video.js).
+- **🕵️ User-Agent Rotation**: Rotates between modern browser profiles to evade detection and rate-limiting.
+- **📑 Rich Metadata**: Deep-scrapes OpenGraph and Meta tags for titles, posters, and full descriptions.
+- **⚡ Performance Optimized**: Integrated caching and async execution for high-concurrency environments.
 
-## 🛠️ Technology Stack
-- **FastAPI**: High-performance Python web framework.
-- **Playwright**: Industry-leading browser automation and network interception.
-- **Uvicorn**: Lightning-fast ASGI server.
-- **Docker**: Containerization for consistent environments.
+## 🛠️ API Reference
+### `GET /extract`
+Extract all available assets from a URL.
 
-## 🚀 Quick Start
+**Query Params:**
+- `url`: The full link to the streaming page.
+- `bypass_cache`: (Optional) `true` to force fresh extraction.
 
-### Deployment on Render
-1. Link your GitHub repository.
-2. Render will automatically detect `render.yaml` and `Dockerfile`.
-3. The build process will install all necessary Chromium dependencies.
-
-### Local Development
-```bash
-git clone https://github.com/X4-DevelopmentStudio/Omni-Stream.git
-cd Omni-Stream
-pip install -r requirements.txt
-playwright install chromium
-python main.py
-```
-
-## 📖 API Documentation
-- **Endpoint**: `/extract`
-- **Parameters**:
-  - `url`: The URL of the target movie/series page.
-  - `bypass_cache`: (Optional) Set to `true` to force a fresh extraction.
-
-### Example Response
+**Example Response:**
 ```json
 {
   "metadata": {
-    "title": "Hellhound (2024) - WeCima",
-    "poster": "https://wecima.gold/posters/hellhound.jpg"
+    "title": "Karate Kid: Legends (2025)",
+    "poster": "https://wecima.gold/poster.jpg",
+    "description": "The latest installment in the Karate Kid saga..."
   },
   "streams": [
-    {
-      "quality": "1080p",
-      "url": "https://stream.server.com/1080/playlist.m3u8",
-      "valid": true
-    },
-    {
-      "quality": "720p",
-      "url": "https://stream.server.com/720/playlist.m3u8",
-      "valid": true
-    }
+    { "type": "hls", "url": "https://cdn.com/stream.m3u8", "headers": { "Referer": "..." } }
   ],
-  "status": "success",
-  "timestamp": 1715678901.23
+  "subtitles": [
+    { "language": "AR", "url": "https://cdn.com/ar.vtt", "format": "VTT" },
+    { "language": "EN", "url": "https://cdn.com/en.vtt", "format": "SRT" }
+  ],
+  "playback_requirements": {
+    "headers": { "User-Agent": "...", "Referer": "..." }
+  }
 }
 ```
 
-## 🤝 Contributing
-Contributions are welcome! Feel free to open issues or submit pull requests to make Omni-Stream even better.
+## 🐳 Deployment
+Optimized for **Render** and **Railway**. The `Dockerfile` handles all system-level dependencies for Playwright and Chromium.
 
 ## ⚖️ License
-MIT License
+MIT
