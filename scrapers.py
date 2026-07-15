@@ -13,10 +13,8 @@ class OmniScraper:
         self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     async def extract_god_mode(self, url: str) -> Dict:
-        # Special handling for WeCima/MyCima as they use base64 encoded player URLs
         if "wecima" in url or "mycima" in url:
             return await self.extract_wecima(url)
-        
         return await self.generic_extract(url)
 
     async def extract_wecima(self, url: str) -> Dict:
@@ -31,45 +29,40 @@ class OmniScraper:
                 await page.goto(url, wait_until="domcontentloaded", timeout=self.timeout)
                 assets["metadata"]["title"] = await page.title()
                 
-                # WeCima specific: find the iframe that contains the player
-                # It usually has a src like https://akhbarworld.online/?mycimafsd=...
                 content = await page.content()
                 match = re.search(r'src="([^"]*akhbarworld\.online[^"]*mycimafsd=([^"]+))"', content)
                 
                 if match:
-                    player_url = match.group(1)
                     encoded_data = match.group(2)
+                    missing_padding = len(encoded_data) % 4
+                    if missing_padding:
+                        encoded_data += '=' * (4 - missing_padding)
+                    decoded_provider = base64.b64decode(encoded_data).decode('utf-8')
                     
-                    # Decode the actual stream provider URL
-                    try:
-                        missing_padding = len(encoded_data) % 4
-                        if missing_padding:
-                            encoded_data += '=' * (4 - missing_padding)
-                        decoded_provider = base64.b64decode(encoded_data).decode('utf-8')
-                        
-                        # Now navigate to the provider URL to get the actual M3U8
-                        print(f"Navigating to provider: {decoded_provider}")
-                        provider_page = await context.new_page()
-                        
-                        # Listen for M3U8 on the provider page
-                        provider_page.on("request", lambda req: self._intercept(req, assets))
-                        
-                        await provider_page.goto(decoded_provider, wait_until="networkidle", timeout=self.timeout)
-                        
-                        # Try to click play on the provider page
-                        play_btn = await provider_page.query_selector("button.play, .vjs-big-play-button")
-                        if play_btn:
-                            await play_btn.click()
-                            await asyncio.sleep(5)
+                    print(f"Navigating to provider: {decoded_provider}")
+                    provider_page = await context.new_page()
+                    
+                    # Intercept and look for the master.m3u8
+                    async def handle_provider_req(req):
+                        if ".m3u8" in req.url:
+                            if req.url not in [s['url'] for s in assets["streams"]]:
+                                # Capture headers and cookies too!
+                                assets["streams"].append({
+                                    "url": req.url,
+                                    "type": "hls",
+                                    "headers": req.headers
+                                })
+
+                    provider_page.on("request", handle_provider_req)
+                    await provider_page.goto(decoded_provider, wait_until="networkidle", timeout=self.timeout)
+                    
+                    # Try to click play to trigger all qualities
+                    play_btn = await provider_page.query_selector("button.play, .vjs-big-play-button")
+                    if play_btn:
+                        await play_btn.click()
+                        await asyncio.sleep(5)
                             
-                        await provider_page.close()
-                    except Exception as e:
-                        print(f"Provider extraction failed: {e}")
-                
-                # If still no streams, try generic on the main page
-                if not assets["streams"]:
-                    page.on("request", lambda req: self._intercept(req, assets))
-                    await asyncio.sleep(5)
+                    await provider_page.close()
 
                 return assets
             except Exception as e:
@@ -98,7 +91,7 @@ class OmniScraper:
         url = request.url
         if ".m3u8" in url:
             if url not in [s['url'] for s in assets["streams"]]:
-                assets["streams"].append({"url": url, "type": "hls"})
+                assets["streams"].append({"url": url, "type": "hls", "headers": request.headers})
         elif any(ext in url.lower() for ext in [".vtt", ".srt", "subtitle"]):
             if url not in [sub['url'] for sub in assets["subtitles"]]:
                 assets["subtitles"].append({"url": url, "type": "subtitle"})

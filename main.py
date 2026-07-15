@@ -11,7 +11,7 @@ import requests
 
 app = FastAPI(
     title="Omni-Stream Pro Service", 
-    version="6.0.0",
+    version="6.1.0",
     description="Automated M3U8 Extraction & Proxy Service"
 )
 
@@ -46,7 +46,7 @@ async def dashboard(request: Request):
         <div class="card">
             <h1>🚀 Omni-Stream Pro Service</h1>
             <p>Status: <span class="status">ONLINE</span></p>
-            <p>Proxy Service is ACTIVE to fix 403 errors.</p>
+            <p>Advanced Proxying is ACTIVE.</p>
             <hr style="border: 0.5px solid #333;">
             <p>API Endpoint: <code>{base_url}/extract?url=TARGET_URL</code></p>
         </div>
@@ -57,19 +57,28 @@ async def dashboard(request: Request):
 @app.get("/proxy")
 async def proxy_stream(url: str, referer: str):
     """
-    Proxies the M3U8/TS stream to bypass 403 Forbidden errors.
+    Proxies the M3U8/TS stream with full header injection.
     """
+    # We use the original referer and a modern UA to mimic a browser
     headers = {
-        "User-Agent": scraper.user_agent,
-        "Referer": referer
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": referer,
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": referer.rstrip('/')
     }
     
-    def generate():
-        with requests.get(url, headers=headers, stream=True, timeout=10) as r:
-            for chunk in r.iter_content(chunk_size=8192):
-                yield chunk
+    try:
+        # We use a session to handle any cookies if needed
+        session = requests.Session()
+        def generate():
+            with session.get(url, headers=headers, stream=True, timeout=15, allow_redirects=True) as r:
+                for chunk in r.iter_content(chunk_size=1024*1024): # 1MB chunks
+                    yield chunk
 
-    return StreamingResponse(generate(), media_type="application/x-mpegURL")
+        return StreamingResponse(generate(), media_type="application/x-mpegURL")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/extract")
 async def extract(
@@ -89,27 +98,31 @@ async def extract(
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
         
-        # Create proxied links to ensure they work 100%
+        # Create proxied links
         proxied_streams = []
         for s in result.get("streams", []):
-            proxied_url = f"{base_url}/proxy?url={s['url']}&referer={url}"
+            # We pass the provider URL as the referer if available, else the main URL
+            actual_referer = s.get("headers", {}).get("referer", url)
+            proxied_url = f"{base_url}/proxy?url={s['url']}&referer={actual_referer}"
+            
+            # Simple quality detection
+            quality = "Auto"
+            if "1080" in s['url']: quality = "1080p"
+            elif "720" in s['url']: quality = "720p"
+            elif "480" in s['url']: quality = "480p"
+
             proxied_streams.append({
-                "quality": s.get("quality", "Auto"),
+                "quality": quality,
+                "url": proxied_url,
                 "original_url": s['url'],
-                "proxied_url": proxied_url,
                 "type": "hls"
             })
 
         response_data = {
             "success": True,
-            "url": url,
             "metadata": result.get("metadata", {}),
             "streams": proxied_streams,
             "subtitles": result.get("subtitles", []),
-            "playback_headers": {
-                "User-Agent": scraper.user_agent,
-                "Referer": url
-            },
             "timestamp": datetime.now().isoformat()
         }
         
