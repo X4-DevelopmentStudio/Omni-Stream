@@ -1,14 +1,30 @@
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from scrapers import OmniScraper
 import uvicorn
 import os
 from datetime import datetime
 import asyncio
 
-app = FastAPI(title="Omni-Stream God Mode", version="4.0.0")
+app = FastAPI(
+    title="Omni-Stream API Service", 
+    version="5.0.0",
+    description="Automated M3U8 Extraction Service for Apps"
+)
+
+# Enable CORS for all origins (Required for app integration)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 scraper = OmniScraper()
+cache = {}
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
@@ -16,62 +32,63 @@ async def dashboard():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Omni-Stream God Mode Dashboard</title>
+        <title>Omni-Stream API Dashboard</title>
         <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f0f0f; color: #fff; padding: 40px; }
-            .container { max-width: 800px; margin: auto; background: #1a1a1a; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-            h1 { color: #00d2ff; text-align: center; }
-            input { width: 100%; padding: 15px; margin: 20px 0; border-radius: 8px; border: none; background: #333; color: #fff; box-sizing: border-box; }
-            button { width: 100%; padding: 15px; border-radius: 8px; border: none; background: #00d2ff; color: #000; font-weight: bold; cursor: pointer; transition: 0.3s; }
-            button:hover { background: #009ec2; }
-            #results { margin-top: 30px; background: #222; padding: 20px; border-radius: 8px; display: none; word-break: break-all; }
-            .loader { border: 4px solid #333; border-top: 4px solid #00d2ff; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
-            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #eee; padding: 40px; text-align: center; }
+            .card { background: #111; padding: 30px; border-radius: 12px; border: 1px solid #333; max-width: 600px; margin: auto; }
+            h1 { color: #00d2ff; }
+            .status { color: #00ff88; font-weight: bold; }
+            code { background: #222; padding: 5px 10px; border-radius: 4px; color: #ffcc00; }
         </style>
     </head>
     <body>
-        <div class="container">
-            <h1>🚀 Omni-Stream God Mode</h1>
-            <p style="text-align:center; color:#888;">Universal Arabic Streaming Link Extractor</p>
-            <input type="text" id="urlInput" placeholder="Enter movie/series URL (EgyBest, WeCima, ArabSeed, etc.)">
-            <button onclick="extract()">EXTRACT REAL LINKS</button>
-            <div class="loader" id="loader"></div>
-            <pre id="results"></pre>
+        <div class="card">
+            <h1>🚀 Omni-Stream API Service</h1>
+            <p>Status: <span class="status">ONLINE</span></p>
+            <p>Your app can now call this API directly.</p>
+            <hr style="border: 0.5px solid #333;">
+            <p>Endpoint: <code>/extract?url=TARGET_URL</code></p>
         </div>
-        <script>
-            async function extract() {
-                const url = document.getElementById('urlInput').value;
-                const results = document.getElementById('results');
-                const loader = document.getElementById('loader');
-                
-                if(!url) return alert('Please enter a URL');
-                
-                results.style.display = 'none';
-                loader.style.display = 'block';
-                
-                try {
-                    const response = await fetch(`/extract?url=${encodeURIComponent(url)}`);
-                    const data = await response.json();
-                    results.textContent = JSON.stringify(data, null, 2);
-                    results.style.display = 'block';
-                } catch (e) {
-                    alert('Extraction failed');
-                } finally {
-                    loader.style.display = 'none';
-                }
-            }
-        </script>
     </body>
     </html>
     """
 
 @app.get("/extract")
-async def extract(url: str = Query(...)):
+async def extract(
+    url: str = Query(..., description="The movie/series page URL to extract from"),
+    bypass_cache: bool = Query(False)
+):
+    # Check Cache
+    if not bypass_cache and url in cache:
+        if (datetime.now() - cache[url]['time']).seconds < 3600:
+            return cache[url]['data']
+
     try:
+        # Perform extraction
         result = await scraper.extract_god_mode(url)
-        return result
+        
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        
+        # Format a clean response for apps
+        response_data = {
+            "success": True,
+            "url": url,
+            "metadata": result.get("metadata", {}),
+            "streams": result.get("streams", []),
+            "subtitles": result.get("subtitles", []),
+            "headers": {
+                "User-Agent": scraper.user_agent,
+                "Referer": url
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        cache[url] = {"time": datetime.now(), "data": response_data}
+        return response_data
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 80))
