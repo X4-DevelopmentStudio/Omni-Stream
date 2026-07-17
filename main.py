@@ -10,9 +10,9 @@ import asyncio
 import requests
 
 app = FastAPI(
-    title="Omni-Stream Legendary Service", 
-    version="7.0.0",
-    description="Universal TMDB Resolver & Legendary Extraction Engine"
+    title="Omni-Stream Universal Service", 
+    version="8.0.0",
+    description="Professional Movie & Anime Extraction API"
 )
 
 app.add_middleware(
@@ -26,34 +26,34 @@ app.add_middleware(
 scraper = OmniScraper()
 cache = {}
 
-@app.get("/")
-async def legendary_dashboard():
+@app.get("/", response_class=HTMLResponse)
+async def home():
     return """
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Omni-Stream Legendary</title>
+        <title>Omni-Stream Universal API</title>
         <style>
-            body { font-family: 'Segoe UI', sans-serif; background: radial-gradient(circle, #1a1a1a, #000); color: #fff; padding: 50px; text-align: center; }
-            .hero { padding: 40px; border: 2px solid #00d2ff; border-radius: 20px; display: inline-block; background: rgba(0,0,0,0.8); box-shadow: 0 0 50px #00d2ff; }
-            h1 { font-size: 3em; margin: 0; color: #00d2ff; text-transform: uppercase; letter-spacing: 5px; }
-            .badge { background: #00d2ff; color: #000; padding: 5px 15px; border-radius: 50px; font-weight: bold; }
+            body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #eee; padding: 50px; text-align: center; }
+            .card { background: #111; padding: 30px; border-radius: 12px; border: 1px solid #333; max-width: 600px; margin: auto; }
+            h1 { color: #00d2ff; }
+            code { background: #222; padding: 5px 10px; border-radius: 4px; color: #ffcc00; }
         </style>
     </head>
     <body>
-        <div class="hero">
-            <h1>Omni-Stream</h1>
-            <p><span class="badge">LEGENDARY EDITION</span></p>
-            <p>Universal TMDB Resolver & Auto-Recovery Active</p>
+        <div class="card">
+            <h1>🚀 Omni-Stream Universal API</h1>
+            <p>Ready for app integration.</p>
             <hr style="border: 0.5px solid #333;">
-            <p>API: <code>/resolve?tmdb_id=ID&type=movie</code></p>
+            <p>Search by Title: <code>/search?title=MovieName</code></p>
+            <p>Resolve by ID: <code>/resolve?tmdb_id=ID</code></p>
         </div>
     </body>
     </html>
     """
 
 @app.get("/proxy")
-async def proxy_stream(url: str, referer: str):
+async def proxy_stream(url: str, referer: str = "https://wecima.gold"):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer": referer,
@@ -69,36 +69,39 @@ async def proxy_stream(url: str, referer: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/search")
+async def search_by_title(
+    title: str = Query(..., description="The title of the movie/anime"),
+    year: str = Query("", description="Optional release year"),
+    request: Request = None
+):
+    base_url = str(request.base_url).rstrip('/')
+    try:
+        result = await scraper.search_by_title(title, year)
+        
+        # Proxy links for reliability
+        for s in result.get("streams", []):
+            s["proxied_url"] = f"{base_url}/proxy?url={s['url']}&referer={title}"
+            
+        return {"success": True, "results": result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.get("/resolve")
 async def resolve(
-    tmdb_id: str = Query(..., description="The TMDB ID of the movie/show"),
+    tmdb_id: str = Query(..., description="The TMDB ID"),
     media_type: str = Query("movie", description="movie or tv"),
     request: Request = None
 ):
     base_url = str(request.base_url).rstrip('/')
-    cache_key = f"{tmdb_id}_{media_type}"
-    
-    if cache_key in cache:
-        if (datetime.now() - cache[cache_key]['time']).seconds < 7200: # 2 hour cache
-            return cache[cache_key]['data']
-
     try:
-        # The Resolver finds the movie across all sites automatically
         result = await scraper.resolve_tmdb(tmdb_id, media_type)
+        if "error" in result: return {"success": False, "error": result["error"]}
         
-        # Proxy all links for 100% reliability
         for s in result.get("streams", []):
-            s["proxied_url"] = f"{base_url}/proxy?url={s['url']}&referer={result['metadata'].get('title', 'stream')}"
-
-        response = {
-            "success": True,
-            "tmdb_id": tmdb_id,
-            "results": result,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        cache[cache_key] = {"time": datetime.now(), "data": response}
-        return response
+            s["proxied_url"] = f"{base_url}/proxy?url={s['url']}&referer={tmdb_id}"
+            
+        return {"success": True, "results": result}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
