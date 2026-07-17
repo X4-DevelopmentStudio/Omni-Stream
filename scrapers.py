@@ -21,27 +21,24 @@ class OmniScraper:
     async def resolve_tmdb(self, tmdb_id: str, media_type: str = "movie") -> Dict:
         metadata = await self._get_metadata(tmdb_id, media_type)
         if not metadata: 
-            # If TMDB fails, we still want to return something so the app doesn't crash
-            return {"error": "Metadata failed, please use title-based search instead."}
+            return {"error": "Metadata failed. Please ensure the TMDB ID is correct."}
         
         return await self.search_by_title(metadata["title"], metadata.get("year", ""))
 
     async def search_by_title(self, title: str, year: str = "") -> Dict:
-        """New professional endpoint: Search and extract directly by movie title."""
         print(f"Searching for: {title} ({year})")
         streams = []
         subtitles = []
         
-        # English fast-track (Optional: You can add more English sources here)
+        # English fast-track
         streams.append({"url": f"https://vidsrc.me/embed/{title.replace(' ', '-')}", "quality": "Multi", "source": "vidsrc"})
 
-        # Sequential search to avoid 502 on Render
         for name, domain in self.sources.items():
             res = await self.search_and_extract(name, domain, title, year)
             if res:
                 if res.get("streams"): streams.extend(res["streams"])
                 if res.get("subtitles"): subtitles.extend(res["subtitles"])
-                if streams: break # Found results, stop searching for speed
+                if streams: break
         
         return {"streams": streams, "subtitles": subtitles, "metadata": {"title": title, "year": year}}
 
@@ -67,13 +64,11 @@ class OmniScraper:
                 
                 await page.goto(search_url, wait_until="domcontentloaded", timeout=self.timeout)
                 
-                # Find first result
                 link = await page.eval_on_selector("a[href*='movie'], a[href*='series'], a[href*='anime']", "el => el.href")
                 if not link: return {}
 
                 await page.goto(link, wait_until="domcontentloaded", timeout=self.timeout)
                 
-                # Special WeCima provider decoding
                 if "wecima" in link:
                     content = await page.content()
                     match = re.search(r'mycimafsd=([^"]+)', content)
@@ -96,8 +91,8 @@ class OmniScraper:
             finally: await browser.close()
 
     async def _get_metadata(self, tmdb_id: str, media_type: str) -> Optional[Dict]:
-        # Using a reliable public TMDB API key
-        api_keys = ["4f298c2054673003f848556c2307c71f", "15d2ea6d0dc1d246f31d0c1d246f31d"]
+        # Try multiple API keys and a scraping fallback
+        api_keys = ["4f298c2054673003f848556c2307c71f", "15d2ea6d0dc1d246f31d0c1d246f31d", "844dba0bfd8f3a4f3799f6130ef9e335"]
         for key in api_keys:
             try:
                 url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}?api_key={key}"
@@ -106,4 +101,17 @@ class OmniScraper:
                     data = res.json()
                     return {"title": data.get("title") or data.get("name"), "year": (data.get("release_date") or data.get("first_air_date", ""))[:4]}
             except: continue
-        return None
+        
+        # Scraping Fallback
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            try:
+                await page.goto(f"https://www.themoviedb.org/{media_type}/{tmdb_id}", timeout=15000)
+                title = await page.title()
+                clean_title = title.split('(')[0].split('—')[0].strip()
+                year_match = re.search(r'\((\d{4})\)', title)
+                year = year_match.group(1) if year_match else ""
+                return {"title": clean_title, "year": year}
+            except: return None
+            finally: await browser.close()
